@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>CIE/CNS/NTAG213 TEST PAGE</title>
+        <style>
+            :root {
+                color-scheme: dark;
+                font-family: Inter, system-ui, sans-serif;
+                background: #07111f;
+                color: #ebf2ff;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                min-height: 100vh;
+                background:
+                    radial-gradient(
+                        circle at top,
+                        rgba(58, 130, 246, 0.25),
+                        transparent 40%
+                    ),
+                    linear-gradient(180deg, #09111d 0%, #04070d 100%);
+            }
+
+            main {
+                width: min(960px, calc(100% - 32px));
+                margin: 0 auto;
+                padding: 32px 0 48px;
+            }
+
+            h1 {
+                margin: 0 0 8px;
+                font-size: clamp(2rem, 5vw, 3.5rem);
+                letter-spacing: -0.04em;
+            }
+
+            p {
+                margin: 0;
+                color: #aab9d6;
+            }
+
+            .grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                gap: 16px;
+                margin-top: 24px;
+            }
+
+            .card {
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                border-radius: 20px;
+                background: rgba(6, 14, 24, 0.72);
+                backdrop-filter: blur(14px);
+                padding: 20px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+            }
+
+            .label {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 0.8rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: #8fa4c9;
+                margin-bottom: 12px;
+            }
+
+            .status-dot {
+                width: 10px;
+                height: 10px;
+                border-radius: 999px;
+                background: #f59e0b;
+                box-shadow: 0 0 16px rgba(245, 158, 11, 0.65);
+            }
+
+            .status-dot.connected {
+                background: #22c55e;
+                box-shadow: 0 0 16px rgba(34, 197, 94, 0.65);
+            }
+
+            .status-dot.error {
+                background: #ef4444;
+                box-shadow: 0 0 16px rgba(239, 68, 68, 0.65);
+            }
+
+            .hero-value {
+                font-size: clamp(1.4rem, 4vw, 2.3rem);
+                font-weight: 700;
+                line-height: 1.15;
+                word-break: break-word;
+            }
+
+            .hero-meta {
+                display: grid;
+                gap: 8px;
+                margin-top: 16px;
+                color: #c4d1ea;
+                font-size: 0.95rem;
+            }
+
+            .history {
+                margin-top: 16px;
+                display: grid;
+                gap: 12px;
+                max-height: 420px;
+                overflow: auto;
+                padding-right: 4px;
+            }
+
+            .event {
+                border-radius: 16px;
+                padding: 14px;
+                background: rgba(15, 23, 42, 0.85);
+                border: 1px solid rgba(96, 165, 250, 0.18);
+            }
+
+            .event.error {
+                border-color: rgba(248, 113, 113, 0.35);
+                background: rgba(69, 10, 10, 0.5);
+            }
+
+            .event-header {
+                display: flex;
+                justify-content: space-between;
+                gap: 12px;
+                font-size: 0.9rem;
+                color: #91a4c7;
+                margin-bottom: 8px;
+            }
+
+            .event-title {
+                font-weight: 700;
+                font-size: 1rem;
+                color: #eff6ff;
+                word-break: break-word;
+            }
+
+            .event-detail {
+                margin-top: 6px;
+                font-size: 0.92rem;
+                color: #c7d4ea;
+                word-break: break-word;
+            }
+
+            code {
+                font-family:
+                    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+                    monospace;
+                color: #93c5fd;
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <h1>CIE/CNS/NTAG213 TEST PAGE</h1>
+            <p>
+                Open this page, keep it connected, then scan a card to receive
+                the final UUID or the read error.
+            </p>
+
+            <section class="grid">
+                <article class="card">
+                    <div class="label">
+                        <span class="status-dot" id="statusDot"></span
+                        ><span id="statusText">Connecting</span>
+                    </div>
+                    <div class="hero-value" id="latestValue">
+                        Waiting for scan...
+                    </div>
+                    <div class="hero-meta" id="latestMeta">
+                        <div>Reader: <code>-</code></div>
+                        <div>Mode: <code>-</code></div>
+                        <div>Source: <code>-</code></div>
+                        <div>Time: <code>-</code></div>
+                    </div>
+                </article>
+            </section>
+
+            <section class="card" style="margin-top: 16px">
+                <div class="label">History</div>
+                <div class="history" id="history"></div>
+            </section>
+        </main>
+
+        <script>
+            const statusDot = document.getElementById("statusDot");
+            const statusText = document.getElementById("statusText");
+            const latestValue = document.getElementById("latestValue");
+            const latestMeta = document.getElementById("latestMeta");
+            const history = document.getElementById("history");
+
+            const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+            const wsUrl = `${wsProtocol}//${location.host}/ws`;
+
+            function setStatus(text, state) {
+                statusText.textContent = text;
+                statusDot.className = "status-dot";
+                if (state) statusDot.classList.add(state);
+            }
+
+            function metaLine(label, value) {
+                return `<div>${label}: <code>${value || "-"}</code></div>`;
+            }
+
+            function escapeHtml(value) {
+                return String(value ?? "-").replace(/[&<>"']/g, (char) => {
+                    if (char === "&") return "&amp;";
+                    if (char === "<") return "&lt;";
+                    if (char === ">") return "&gt;";
+                    if (char === '"') return "&quot;";
+                    return "&#39;";
+                });
+            }
+
+            function formatTime(timestamp) {
+                try {
+                    return new Date(timestamp).toLocaleString();
+                } catch {
+                    return timestamp || "-";
+                }
+            }
+
+            function renderLatest(payload) {
+                latestValue.textContent = payload.success
+                    ? payload.uuid
+                    : payload.error;
+                latestMeta.innerHTML = [
+                    metaLine("Reader", escapeHtml(payload.reader)),
+                    metaLine("Mode", escapeHtml(payload.mode)),
+                    metaLine("Source", escapeHtml(payload.source)),
+                    metaLine("Time", escapeHtml(formatTime(payload.timestamp))),
+                ].join("");
+            }
+
+            function addHistory(payload) {
+                const item = document.createElement("article");
+                item.className = `event${payload.success ? "" : " error"}`;
+
+                const title = payload.success ? payload.uuid : payload.error;
+                const details = [
+                    `Reader: ${escapeHtml(payload.reader)}`,
+                    `Mode: ${escapeHtml(payload.mode)}`,
+                    `Source: ${escapeHtml(payload.source)}`,
+                    `ATR: ${escapeHtml(payload.atr)}`,
+                ];
+
+                item.innerHTML = `
+        <div class="event-header">
+          <span>${payload.success ? "Scan OK" : "Scan Error"}</span>
+          <span>${escapeHtml(formatTime(payload.timestamp))}</span>
+        </div>
+        <div class="event-title">${escapeHtml(title)}</div>
+        ${details.map((detail) => `<div class="event-detail">${detail}</div>`).join("")}
+      `;
+
+                history.prepend(item);
+            }
+
+            function connect() {
+                setStatus("Connecting", "");
+                const ws = new WebSocket(wsUrl);
+
+                ws.addEventListener("open", () => {
+                    setStatus("Connected", "connected");
+                });
+
+                ws.addEventListener("message", (event) => {
+                    const payload = JSON.parse(event.data);
+
+                    if (payload.type === "ready") {
+                        return;
+                    }
+
+                    if (payload.type !== "scan") {
+                        return;
+                    }
+
+                    renderLatest(payload);
+                    addHistory(payload);
+                });
+
+                ws.addEventListener("close", () => {
+                    setStatus("Disconnected, retrying...", "error");
+                    setTimeout(connect, 1000);
+                });
+
+                ws.addEventListener("error", () => {
+                    setStatus("Connection error", "error");
+                });
+            }
+
+            connect();
+        </script>
+    </body>
+</html>
